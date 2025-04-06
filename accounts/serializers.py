@@ -1,6 +1,8 @@
 from .models import User
 from rest_framework import serializers
 from django.contrib.auth import authenticate
+import random
+from django.utils import timezone
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 
@@ -17,7 +19,17 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        return User.objects.create_user(**validated_data)
+        user = User.objects.create_user(**validated_data)
+        otp = f"{random.randint(100000, 999999)}"
+        user.otp_code = otp
+        user.otp_created_at = timezone.now()
+        user.is_active = False  # Prevent login until verified
+        user.save()
+
+        # Send OTP (email/phone)
+        self.send_otp(user)
+
+        return user
 
 
 class LoginSerializer(serializers.Serializer):

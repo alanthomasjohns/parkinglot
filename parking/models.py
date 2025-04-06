@@ -1,23 +1,20 @@
 from django.db import models
 from accounts.models import User
+from .constants import VehicleCategory
+from django.utils import timezone
 
 
 class VehicleType(models.Model):
-    """
-    Represents different types of vehicles that can use the parking system.
-    Example: Motorcycle, Car, Bus.
-    """
     name = models.CharField(max_length=20, unique=True)
+    category = models.CharField(
+        max_length=20, choices=VehicleCategory.choices, null=True, blank=True
+    )
 
     def __str__(self):
-        return f"{self.name}"
+        return self.name
 
 
 class ParkingLevel(models.Model):
-    """
-    Represents a floor or level in the multi-level parking structure.
-    Each level can have multiple parking slots.
-    """
     level_number = models.IntegerField(unique=True)
 
     def __str__(self):
@@ -25,12 +22,10 @@ class ParkingLevel(models.Model):
 
 
 class ParkingSlot(models.Model):
-    """
-    Represents an individual parking slot within a specific level,
-    assigned to a certain vehicle type.
-    """
     slot_number = models.CharField(max_length=10)
-    level = models.ForeignKey(ParkingLevel, on_delete=models.CASCADE, related_name='slots')
+    level = models.ForeignKey(
+        ParkingLevel, on_delete=models.CASCADE, related_name="slots"
+    )
     vehicle_type = models.ForeignKey(VehicleType, on_delete=models.CASCADE)
     is_occupied = models.BooleanField(default=False)
 
@@ -39,28 +34,27 @@ class ParkingSlot(models.Model):
 
 
 class Vehicle(models.Model):
-    """
-    Stores details of vehicles registered by users.
-    Used for reservation, assignment, and billing.
-    """
-    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='vehicles')
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="vehicles")
     vehicle_type = models.ForeignKey(VehicleType, on_delete=models.CASCADE)
-    license_plate = models.CharField(max_length=20)
+    license_plate = models.CharField(max_length=20, unique=True)
 
     def __str__(self):
         return f"{self.license_plate} ({self.vehicle_type.name})"
 
 
-class Reservation(models.Model):
+class ParkingRecord(models.Model):
     """
-    Represents a reservation made by a user for a parking slot.
-    Helps in pre-booking, billing, and managing slot availability.
+    Real-time parking record for tracking entry/exit and billing.
     """
+
     vehicle = models.ForeignKey(Vehicle, on_delete=models.CASCADE)
     slot = models.ForeignKey(ParkingSlot, on_delete=models.CASCADE)
-    reserved_from = models.DateTimeField()
-    reserved_to = models.DateTimeField()
-    is_active = models.BooleanField(default=True)
+    entry_time = models.DateTimeField(default=timezone.now)
+    exit_time = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
-        return f"Reservation for {self.vehicle} from {self.reserved_from} to {self.reserved_to}"
+        return f"{self.vehicle} - Slot {self.slot.slot_number} | {self.entry_time} ➡ {self.exit_time or 'Active'}"
+
+    @property
+    def is_active(self):
+        return self.exit_time is None

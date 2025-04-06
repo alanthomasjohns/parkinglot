@@ -1,4 +1,6 @@
 from rest_framework.views import APIView
+from .models import User
+from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework import status
 from .serializers import (
@@ -18,7 +20,7 @@ class RegisterAPIView(APIView):
         if serializer.is_valid():
             serializer.save()
             return Response(
-                {"message": "User registered successfully"},
+                {"message": "User registered. OTP sent."},
                 status=status.HTTP_201_CREATED,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -63,3 +65,30 @@ class UserProfileAPIView(APIView):
 
 # class MyTokenObtainPairView(TokenObtainPairView):
 #     serializer_class = MyTokenObtainPairSerializer
+
+
+class VerifyOTPAPIView(APIView):
+    def post(self, request):
+        email_or_phone = request.data.get('email') or request.data.get('phone_number')
+        otp = request.data.get('otp')
+
+        try:
+            user = User.objects.get(email=email_or_phone) if '@' in email_or_phone else User.objects.get(phone_number=email_or_phone)
+        except User.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+
+        if user.otp_code != otp:
+            return Response({"error": "Invalid OTP"}, status=400)
+
+        # Optional: Check expiry (e.g., 5 min)
+        time_diff = timezone.now() - user.otp_created_at
+        if time_diff.total_seconds() > 300:
+            return Response({"error": "OTP expired"}, status=400)
+
+        user.is_active = True
+        user.is_verified = True
+        user.otp_code = None
+        user.otp_created_at = None
+        user.save()
+
+        return Response({"message": "User verified successfully"})

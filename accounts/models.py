@@ -24,6 +24,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     first_name = models.CharField(max_length=255, null=True, blank=True)
     last_name = models.CharField(max_length=255, null=True, blank=True)
     phone_number = models.CharField(max_length=20, blank=True, null=True)
+    is_verified = models.BooleanField(default=False)
+    otp_code = models.CharField(max_length=6, blank=True, null=True)
+    otp_created_at = models.DateTimeField(blank=True, null=True)
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)

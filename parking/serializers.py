@@ -4,7 +4,7 @@ from .models import (
     ParkingLevel,
     ParkingSlot,
     Vehicle,
-    Reservation
+    ParkingRecord
 )
 
 
@@ -29,17 +29,18 @@ class ParkingSlotSerializer(serializers.ModelSerializer):
 
 
 class VehicleSerializer(serializers.ModelSerializer):
-    owner = serializers.StringRelatedField(read_only=True)
-
     class Meta:
         model = Vehicle
-        fields = '__all__'
+        fields = ['id', 'vehicle_type', 'license_plate']
+        read_only_fields = ['id']
 
 
-class ReservationSerializer(serializers.ModelSerializer):
-    vehicle = VehicleSerializer(read_only=True)
-    slot = ParkingSlotSerializer(read_only=True)
+class ParkingRecordSerializer(serializers.ModelSerializer):
+    level = serializers.IntegerField(source='slot.level.level_number', read_only=True)
+    slot_number = serializers.CharField(source='slot.slot_number', read_only=True)
+    vehicle = serializers.StringRelatedField()
 
     class Meta:
-        model = Reservation
-        fields = '__all__'
+        model = ParkingRecord
+        fields = ['id', 'vehicle', 'level', 'slot_number', 'entry_time', 'exit_time']
+        read_only_fields = ['id', 'entry_time', 'exit_time']
