@@ -94,21 +94,19 @@ class AllocateParkingSlotView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        vehicle_id = request.data.get("vehicle_id")
         license_plate = request.data.get("license_plate")
+        slot_number = request.data.get("slot_number")
+
+        if not license_plate or not slot_number:
+            return Response(
+                {"error": "Both license plate and slot number are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
-            if license_plate:
-                vehicle = get_object_or_404(
-                    Vehicle, license_plate=license_plate, owner=request.user
-                )
-            elif vehicle_id:
-                vehicle = get_object_or_404(Vehicle, id=vehicle_id, owner=request.user)
-            else:
-                return Response(
-                    {"error": "Either vehicle ID or number plate is required."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            vehicle = get_object_or_404(
+                Vehicle, license_plate=license_plate, owner=request.user
+            )
         except Vehicle.DoesNotExist:
             return Response(
                 {"error": "Vehicle not found."}, status=status.HTTP_404_NOT_FOUND
@@ -122,18 +120,15 @@ class AllocateParkingSlotView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        vehicle_type = vehicle.vehicle_type
-
-        slot = (
-            ParkingSlot.objects.filter(vehicle_type=vehicle_type, is_occupied=False)
-            .select_related("level")
-            .order_by("level__level_number", "slot_number")
-            .first()
-        )
-
-        if not slot:
+        try:
+            slot = ParkingSlot.objects.select_related("level").get(
+                slot_number=slot_number,
+                vehicle_type=vehicle.vehicle_type,
+                is_occupied=False,
+            )
+        except ParkingSlot.DoesNotExist:
             return Response(
-                {"message": "No available slot found for this vehicle type."},
+                {"error": "Slot not available or does not match vehicle type."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
@@ -151,6 +146,7 @@ class AllocateParkingSlotView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
 
 
 class CheckoutParkingView(APIView):
