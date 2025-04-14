@@ -2,6 +2,7 @@ from django.db import models
 from accounts.models import User
 from .constants import VehicleCategory
 from django.utils import timezone
+from django.core.exceptions import ValidationError
 
 
 class VehicleType(models.Model):
@@ -54,9 +55,9 @@ class ParkingRecord(models.Model):
     amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     payment_status = models.CharField(
         max_length=20,
-        choices=[('PENDING', 'Pending'), ('SUCCESS', 'Success'), ('FAILED', 'Failed')],
-        default='PENDING',
-        null=True
+        choices=[("PENDING", "Pending"), ("SUCCESS", "Success"), ("FAILED", "Failed")],
+        default="PENDING",
+        null=True,
     )
     payment_details = models.JSONField(default=dict, null=True, blank=True)
     created = models.DateTimeField(("Created"), auto_now_add=True, null=True)
@@ -67,3 +68,15 @@ class ParkingRecord(models.Model):
     @property
     def is_active(self):
         return self.exit_time is None
+
+    def clean(self):
+        if not self.exit_time:
+            existing = ParkingRecord.objects.filter(
+                vehicle=self.vehicle, exit_time__isnull=True
+            )
+            if self.pk:
+                existing = existing.exclude(pk=self.pk)
+            if existing.exists():
+                raise ValidationError(
+                    "An active parking record already exists for this vehicle."
+                )

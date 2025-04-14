@@ -44,3 +44,9 @@ class ParkingRecordSerializer(serializers.ModelSerializer):
         model = ParkingRecord
         fields = ['id', 'vehicle', 'level', 'slot_number', 'entry_time', 'exit_time']
         read_only_fields = ['id', 'entry_time', 'exit_time']
+
+    def validate(self, data):
+        vehicle = data.get('vehicle')
+        if ParkingRecord.objects.filter(vehicle=vehicle, exit_time__isnull=True).exists():
+            raise serializers.ValidationError("This vehicle already has an active parking record.")
+        return data

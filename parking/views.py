@@ -11,7 +11,8 @@ from django.utils import timezone
 class ParkingAvailabilityView(APIView):
     """
     Returns real-time availability of slots per level and vehicle type,
-    including available slot IDs
+    including available and occupied slot IDs.
+    Only includes vehicle types that have slots in a level.
     """
 
     def get(self, request):
@@ -24,18 +25,32 @@ class ParkingAvailabilityView(APIView):
             slot_data = {}
 
             for v_type in vehicle_types:
-                all_slots = ParkingSlot.objects.filter(level=level)
+                all_slots = ParkingSlot.objects.filter(level=level, vehicle_type=v_type)
+
+                # Skip if no slots of this vehicle type exist on this level
+                if not all_slots.exists():
+                    continue
+
                 available_slots = all_slots.filter(is_occupied=False)
+                occupied_slots = all_slots.filter(is_occupied=True)
 
                 slot_data[v_type.name] = {
-                    "total": all_slots.count(),
-                    "available": available_slots.count(),
-                    "slot_ids": list(
+                    "total_slots": all_slots.count(),
+                    "currenty_available_slots": available_slots.count(),
+                    "occupied_slot_numbers": occupied_slots.count(),
+                    "available_slot_ids": list(
                         available_slots.values_list("slot_number", flat=True)
+                    ),
+                    "occupied_slot_ids": list(
+                        occupied_slots.values_list("slot_number", flat=True)
                     ),
                 }
 
-            levels_data.append({"level_number": level.level_number, "slots": slot_data})
+            if slot_data:
+                levels_data.append({
+                    "level_number": level.level_number,
+                    "slots": slot_data
+                })
 
         return Response({"levels": levels_data})
 
@@ -99,6 +114,12 @@ class AllocateParkingSlotView(APIView):
         except Vehicle.DoesNotExist:
             return Response(
                 {"error": "Vehicle not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        if ParkingRecord.objects.filter(vehicle=vehicle, exit_time__isnull=True).exists():
+            return Response(
+                {"error": "Vehicle is already parked."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         vehicle_type = vehicle.vehicle_type
