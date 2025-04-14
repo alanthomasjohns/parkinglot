@@ -10,46 +10,37 @@ from django.utils import timezone
 
 class ParkingAvailabilityView(APIView):
     """
-    Returns real-time availability of slots per level and vehicle type,
-    including available and occupied slot IDs.
-    Only includes vehicle types that have slots in a level.
+    Returns real-time availability of parking slots per level.
     """
 
     def get(self, request):
         levels_data = []
 
         levels = ParkingLevel.objects.all()
-        vehicle_types = VehicleType.objects.all()
 
         for level in levels:
-            slot_data = {}
+            available = []
+            occupied = []
 
-            for v_type in vehicle_types:
-                all_slots = ParkingSlot.objects.filter(level=level, vehicle_type=v_type)
+            all_slots = ParkingSlot.objects.filter(level=level).select_related("vehicle_type")
 
-                # Skip if no slots of this vehicle type exist on this level
-                if not all_slots.exists():
-                    continue
-
-                available_slots = all_slots.filter(is_occupied=False)
-                occupied_slots = all_slots.filter(is_occupied=True)
-
-                slot_data[v_type.name] = {
-                    "total_slots": all_slots.count(),
-                    "currenty_available_slots": available_slots.count(),
-                    "occupied_slot_numbers": occupied_slots.count(),
-                    "available_slot_ids": list(
-                        available_slots.values_list("slot_number", flat=True)
-                    ),
-                    "occupied_slot_ids": list(
-                        occupied_slots.values_list("slot_number", flat=True)
-                    ),
+            for slot in all_slots:
+                slot_info = {
+                    "slot_id": slot.slot_number,
+                    "vehicle_type": slot.vehicle_type.name
                 }
+                if slot.is_occupied:
+                    occupied.append(slot_info)
+                else:
+                    available.append(slot_info)
 
-            if slot_data:
+            if available or occupied:
                 levels_data.append({
                     "level_number": level.level_number,
-                    "slots": slot_data
+                    "slots": {
+                        "available": available,
+                        "occupied": occupied
+                    }
                 })
 
         return Response({"levels": levels_data})
