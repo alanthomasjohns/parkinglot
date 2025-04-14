@@ -27,13 +27,11 @@ class RegisterAPIView(APIView):
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            otp = str(random.randint(100000, 999999))
-            user.otp_code = otp
-            user.save(update_fields=["otp_code"])
             return Response(
                 {
-                    "message": "User registered. OTP sent.",
-                    "otp": otp
+                    "message": "User registered successfully.",
+                    "user_id": user.id,
+                    "email": user.email,
                 },
                 status=status.HTTP_201_CREATED,
             )

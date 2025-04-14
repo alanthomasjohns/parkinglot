@@ -11,7 +11,10 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['email', 'first_name', 'username', 'password']
+        fields = ['email', 'first_name', 'username', 'password', 'phone_number']
+        extra_kwargs = {
+            'phone_number': {'required': False, 'allow_blank': True}
+        }
 
     def validate(self, data):
         if not data.get('email') and not data.get('phone_number'):
@@ -19,16 +22,11 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        user = User.objects.create_user(**validated_data)
-        otp = f"{random.randint(100000, 999999)}"
-        user.otp_code = otp
-        user.otp_created_at = timezone.now()
-        user.is_active = False  # Prevent login until verified
+        password = validated_data.pop("password")
+        user = User(**validated_data)
+        user.set_password(password)
+        user.is_active = True
         user.save()
-
-        # Send OTP (email/phone)
-        # self.send_otp(user)
-
         return user
 
 
