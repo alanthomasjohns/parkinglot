@@ -22,12 +22,14 @@ class ParkingAvailabilityView(APIView):
             available = []
             occupied = []
 
-            all_slots = ParkingSlot.objects.filter(level=level).select_related("vehicle_type")
+            all_slots = ParkingSlot.objects.filter(level=level).select_related(
+                "vehicle_type"
+            )
 
             for slot in all_slots:
                 slot_info = {
                     "slot_id": slot.slot_number,
-                    "vehicle_type": slot.vehicle_type.name
+                    "vehicle_type": slot.vehicle_type.name,
                 }
                 if slot.is_occupied:
                     occupied.append(slot_info)
@@ -35,13 +37,12 @@ class ParkingAvailabilityView(APIView):
                     available.append(slot_info)
 
             if available or occupied:
-                levels_data.append({
-                    "level_number": level.level_number,
-                    "slots": {
-                        "available": available,
-                        "occupied": occupied
+                levels_data.append(
+                    {
+                        "level_number": level.level_number,
+                        "slots": {"available": available, "occupied": occupied},
                     }
-                })
+                )
 
         return Response({"levels": levels_data})
 
@@ -94,20 +95,28 @@ class AllocateParkingSlotView(APIView):
 
     def post(self, request):
         vehicle_id = request.data.get("vehicle_id")
-
-        if not vehicle_id:
-            return Response(
-                {"error": "Vehicle ID is required."}, status=status.HTTP_400_BAD_REQUEST
-            )
+        license_plate = request.data.get("license_plate")
 
         try:
-            vehicle = get_object_or_404(Vehicle, id=vehicle_id, owner=request.user)
+            if license_plate:
+                vehicle = get_object_or_404(
+                    Vehicle, license_plate=license_plate, owner=request.user
+                )
+            elif vehicle_id:
+                vehicle = get_object_or_404(Vehicle, id=vehicle_id, owner=request.user)
+            else:
+                return Response(
+                    {"error": "Either vehicle ID or number plate is required."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         except Vehicle.DoesNotExist:
             return Response(
                 {"error": "Vehicle not found."}, status=status.HTTP_404_NOT_FOUND
             )
 
-        if ParkingRecord.objects.filter(vehicle=vehicle, exit_time__isnull=True).exists():
+        if ParkingRecord.objects.filter(
+            vehicle=vehicle, exit_time__isnull=True
+        ).exists():
             return Response(
                 {"error": "Vehicle is already parked."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -131,7 +140,7 @@ class AllocateParkingSlotView(APIView):
         record = ParkingRecord.objects.create(vehicle=vehicle, slot=slot)
 
         slot.is_occupied = True
-        slot.save()
+        slot.save(update_fields=["is_occupied"])
 
         return Response(
             {
@@ -160,8 +169,7 @@ class CheckoutParkingView(APIView):
                 )
             else:
                 return Response(
-                    {"error": "vehicle_id or license_plate is required."},
-                    status=400
+                    {"error": "vehicle_id or license_plate is required."}, status=400
                 )
 
             parking_record = (
@@ -170,7 +178,9 @@ class CheckoutParkingView(APIView):
                 .first()
             )
             if not parking_record:
-                return Response({"error": "No active parking record found."}, status=404)
+                return Response(
+                    {"error": "No active parking record found."}, status=404
+                )
 
         except Vehicle.DoesNotExist:
             return Response({"error": "Vehicle not found."}, status=404)
@@ -198,7 +208,9 @@ class CheckoutParkingView(APIView):
             "payment_status": parking_record.payment_status,
         }
         parking_record.payment_details = details
-        parking_record.save(update_fields=["exit_time", "amount", "payment_status", "payment_details"])
+        parking_record.save(
+            update_fields=["exit_time", "amount", "payment_status", "payment_details"]
+        )
 
         return Response(
             details,
@@ -211,18 +223,28 @@ class MarkPaymentSuccessView(APIView):
 
     def post(self, request):
         parking_record_id = request.data.get("parking_record_id")
-        if not parking_record_id:
-            return Response({"error": "Parking record ID is required."}, status=400)
+        license_plate = request.data.get("license_plate")
 
-        parking_record = (
-            ParkingRecord.objects.filter(id=parking_record_id, vehicle__owner=request.user)
-            .order_by("-created")
-            .first()
-        )
+        if parking_record_id:
+            parking_record = (
+                ParkingRecord.objects.filter(
+                    id=parking_record_id, vehicle__owner=request.user
+                )
+                .order_by("-created")
+                .first()
+            )
+        elif license_plate:
+            parking_record = (
+                ParkingRecord.objects.filter(
+                    vehicle__license_plate=license_plate, vehicle__owner=request.user
+                )
+                .order_by("-created")
+                .first()
+            )
+        else:
+            return Response({"error": "Number plate / ID should be provided"})
         if not parking_record:
-            return Response({
-                "error": "Parking record not found"
-            })
+            return Response({"error": "Parking record not found"})
 
         if parking_record.payment_status == "SUCCESS":
             return Response({"message": "Payment already completed."})
@@ -231,7 +253,11 @@ class MarkPaymentSuccessView(APIView):
         details = parking_record.payment_details or {}
         details["payment_status"] = "SUCCESS"
         details["paid_on"] = str(timezone.now())
+        details["message"] = "Payment Completed"
         parking_record.payment_details = details
         parking_record.save(update_fields=["payment_status", "payment_details"])
 
-        return Response({"message": "Payment marked as successful."})
+        return Response({
+            "message": "Payment marked as successful.",
+            "invoice_details": parking_record.payment_details
+            })
