@@ -4,7 +4,6 @@ from .views import RegisterAPIView, UserProfileAPIView, LoginAPIView, VerifyOTPA
 urlpatterns = [
     path('register/', RegisterAPIView.as_view(), name='register'),
     path('login/', LoginAPIView.as_view(), name='login'),
-    # path('login/', MyTokenObtainPairView.as_view(), name='login'),
     path('profile/', UserProfileAPIView.as_view(), name='profile'),
-    path("verify-otp/", VerifyOTPAPIView.as_view()),
+    path("verify-otp/", VerifyOTPAPIView.as_view(), name="verify-otp"),
 ]

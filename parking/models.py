@@ -51,6 +51,15 @@ class ParkingRecord(models.Model):
     slot = models.ForeignKey(ParkingSlot, on_delete=models.CASCADE)
     entry_time = models.DateTimeField(default=timezone.now)
     exit_time = models.DateTimeField(null=True, blank=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    payment_status = models.CharField(
+        max_length=20,
+        choices=[('PENDING', 'Pending'), ('SUCCESS', 'Success'), ('FAILED', 'Failed')],
+        default='PENDING',
+        null=True
+    )
+    payment_details = models.JSONField(default=dict, null=True, blank=True)
+    created = models.DateTimeField(("Created"), auto_now_add=True, null=True)
 
     def __str__(self):
         return f"{self.vehicle} - Slot {self.slot.slot_number} | {self.entry_time} ➡ {self.exit_time or 'Active'}"

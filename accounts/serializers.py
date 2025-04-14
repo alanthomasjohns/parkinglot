@@ -27,7 +27,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         user.save()
 
         # Send OTP (email/phone)
-        self.send_otp(user)
+        # self.send_otp(user)
 
         return user
 

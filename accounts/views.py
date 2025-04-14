@@ -1,3 +1,4 @@
+import random
 from rest_framework.views import APIView
 from .models import User
 from django.utils import timezone
@@ -13,14 +14,27 @@ from rest_framework.authtoken.models import Token
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView
 
+from django.http import JsonResponse
+
+def home(request):
+    return JsonResponse({"message": "Parking System API is live!"})
+
+def generate_otp():
+    return str(random.randint(100000, 999999))
 
 class RegisterAPIView(APIView):
     def post(self, request):
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
+            user = serializer.save()
+            otp = str(random.randint(100000, 999999))
+            user.otp_code = otp
+            user.save(update_fields=["otp_code"])
             return Response(
-                {"message": "User registered. OTP sent."},
+                {
+                    "message": "User registered. OTP sent.",
+                    "otp": otp
+                },
                 status=status.HTTP_201_CREATED,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -63,32 +77,16 @@ class UserProfileAPIView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# class MyTokenObtainPairView(TokenObtainPairView):
-#     serializer_class = MyTokenObtainPairSerializer
-
-
 class VerifyOTPAPIView(APIView):
     def post(self, request):
-        email_or_phone = request.data.get('email') or request.data.get('phone_number')
-        otp = request.data.get('otp')
+        user_id = request.data.get("user_id")
+        otp = request.data.get("otp")
 
         try:
-            user = User.objects.get(email=email_or_phone) if '@' in email_or_phone else User.objects.get(phone_number=email_or_phone)
+            user = User.objects.get(id=user_id, otp_code=otp)
+            user.is_verified = True
+            user.otp_code = None  # Clear OTP
+            user.save(update_fields=["is_verified", "otp_code"])
+            return Response({"message": "OTP verified successfully."})
         except User.DoesNotExist:
-            return Response({"error": "User not found"}, status=404)
-
-        if user.otp_code != otp:
-            return Response({"error": "Invalid OTP"}, status=400)
-
-        # Optional: Check expiry (e.g., 5 min)
-        time_diff = timezone.now() - user.otp_created_at
-        if time_diff.total_seconds() > 300:
-            return Response({"error": "OTP expired"}, status=400)
-
-        user.is_active = True
-        user.is_verified = True
-        user.otp_code = None
-        user.otp_created_at = None
-        user.save()
-
-        return Response({"message": "User verified successfully"})
+            return Response({"error": "Invalid OTP or user."}, status=400)

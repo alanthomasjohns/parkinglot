@@ -1,10 +1,11 @@
 from rest_framework.views import APIView
-from rest_framework.views import APIView
 from rest_framework.response import Response
 from .models import ParkingLevel, ParkingSlot, VehicleType, Vehicle, ParkingRecord
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
+
+from django.utils import timezone
 
 
 class ParkingAvailabilityView(APIView):
@@ -129,3 +130,96 @@ class AllocateParkingSlotView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class CheckoutParkingView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        vehicle_id = request.data.get("vehicle_id")
+        license_plate = request.data.get("license_plate")
+
+        try:
+            if vehicle_id:
+                vehicle = Vehicle.objects.get(id=vehicle_id, owner=request.user)
+            elif license_plate:
+                vehicle = Vehicle.objects.get(
+                    license_plate=license_plate.upper(), owner=request.user
+                )
+            else:
+                return Response(
+                    {"error": "vehicle_id or license_plate is required."},
+                    status=400
+                )
+
+            parking_record = (
+                ParkingRecord.objects.filter(vehicle=vehicle, exit_time__isnull=True)
+                .order_by("-created")
+                .first()
+            )
+            if not parking_record:
+                return Response({"error": "No active parking record found."}, status=404)
+
+        except Vehicle.DoesNotExist:
+            return Response({"error": "Vehicle not found."}, status=404)
+
+        parking_record.exit_time = timezone.now()
+
+        slot = parking_record.slot
+        slot.is_occupied = False
+        slot.save(update_fields=["is_occupied"])
+
+        duration = parking_record.exit_time - parking_record.entry_time
+        hours = max(1, int(duration.total_seconds() // 3600))  # Charge at least 1 hour
+        rate_per_hour = 20  # ₹20 per hour
+        amount = hours * rate_per_hour
+        parking_record.amount = amount
+        parking_record.payment_status = "PENDING"
+
+        details = {
+            "message": "Please complete payment to exit.",
+            "license_plate": vehicle.license_plate.upper(),
+            "entry_time": parking_record.entry_time.isoformat(),
+            "exit_time": parking_record.exit_time.isoformat(),
+            "duration_hours": hours,
+            "amount": amount,
+            "payment_status": parking_record.payment_status,
+        }
+        parking_record.payment_details = details
+        parking_record.save(update_fields=["exit_time", "amount", "payment_status", "payment_details"])
+
+        return Response(
+            details,
+            status=status.HTTP_200_OK,
+        )
+
+
+class MarkPaymentSuccessView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        parking_record_id = request.data.get("parking_record_id")
+        if not parking_record_id:
+            return Response({"error": "Parking record ID is required."}, status=400)
+
+        parking_record = (
+            ParkingRecord.objects.filter(id=parking_record_id, vehicle__owner=request.user)
+            .order_by("-created")
+            .first()
+        )
+        if not parking_record:
+            return Response({
+                "error": "Parking record not found"
+            })
+
+        if parking_record.payment_status == "SUCCESS":
+            return Response({"message": "Payment already completed."})
+
+        parking_record.payment_status = "SUCCESS"
+        details = parking_record.payment_details or {}
+        details["payment_status"] = "SUCCESS"
+        details["paid_on"] = str(timezone.now())
+        parking_record.payment_details = details
+        parking_record.save(update_fields=["payment_status", "payment_details"])
+
+        return Response({"message": "Payment marked as successful."})
