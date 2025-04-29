@@ -4,6 +4,7 @@ from .models import ParkingLevel, ParkingSlot, VehicleType, Vehicle, ParkingReco
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
+from datetime import datetime
 
 from django.utils import timezone
 
@@ -96,6 +97,8 @@ class AllocateParkingSlotView(APIView):
     def post(self, request):
         license_plate = request.data.get("license_plate")
         slot_number = request.data.get("slot_number")
+        prebook = request.data.get("prebook", False)
+        start_time = request.data.get("start_time")
 
         if not license_plate or not slot_number:
             return Response(
@@ -125,6 +128,7 @@ class AllocateParkingSlotView(APIView):
                 slot_number=slot_number,
                 vehicle_type=vehicle.vehicle_type,
                 is_occupied=False,
+                is_prebooked=False,
             )
         except ParkingSlot.DoesNotExist:
             return Response(
@@ -132,20 +136,54 @@ class AllocateParkingSlotView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        record = ParkingRecord.objects.create(vehicle=vehicle, slot=slot)
+        if prebook:
+            start_dt = datetime.fromisoformat(start_time)
+            end_dt = datetime.fromisoformat(end_time)
+            if start_dt >= end_dt:
+                return Response(
+                    {"error": "End time must be after start time."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-        slot.is_occupied = True
-        slot.save(update_fields=["is_occupied"])
+            # Marking slot as prebooked
+            slot.is_prebooked = True
+            slot.prebooked_start_time = start_dt
+            slot.prebooked_end_time = end_dt
+            slot.save(update_fields=["is_prebooked", "prebooked_start_time", "prebooked_end_time"])
 
-        return Response(
-            {
-                "message": "Parking allocated",
-                "level": slot.level.level_number,
-                "slot": slot.slot_number,
-                "record_id": record.id,
-            },
-            status=status.HTTP_201_CREATED,
-        )
+            record = ParkingRecord.objects.create(
+                vehicle=vehicle,
+                slot=slot,
+                is_prebooked=True,
+                entry_time=start_dt,
+            )
+
+            return Response(
+                {
+                    "message": "Parking prebooked successfully.",
+                    "level": slot.level.level_number,
+                    "slot": slot.slot_number,
+                    "start_time": start_dt,
+                    "end_time": end_dt,
+                    "record_id": record.id,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        else:
+            record = ParkingRecord.objects.create(vehicle=vehicle, slot=slot)
+            slot.is_occupied = True
+            slot.save(update_fields=["is_occupied"])
+
+            return Response(
+                {
+                    "message": "Parking allocated",
+                    "level": slot.level.level_number,
+                    "slot": slot.slot_number,
+                    "record_id": record.id,
+                },
+                status=status.HTTP_201_CREATED,
+            )
 
 
 
@@ -185,7 +223,8 @@ class CheckoutParkingView(APIView):
 
         slot = parking_record.slot
         slot.is_occupied = False
-        slot.save(update_fields=["is_occupied"])
+        slot.is_prebooked = False
+        slot.save(update_fields=["is_occupied", "is_prebooked"])
 
         duration = parking_record.exit_time - parking_record.entry_time
         hours = max(1, int(duration.total_seconds() // 3600))  # Charge at least 1 hour

@@ -4,7 +4,7 @@ from .models import (
     ParkingLevel,
     ParkingSlot,
     Vehicle,
-    ParkingRecord
+    ParkingRecord,
 )
 
 

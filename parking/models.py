@@ -29,6 +29,7 @@ class ParkingSlot(models.Model):
     )
     vehicle_type = models.ForeignKey(VehicleType, on_delete=models.CASCADE)
     is_occupied = models.BooleanField(default=False)
+    is_prebooked = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Slot {self.slot_number} (Level {self.level.level_number})"
