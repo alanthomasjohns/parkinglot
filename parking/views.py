@@ -105,6 +105,8 @@ class AllocateParkingSlotView(APIView):
                 {"error": "Both license plate and slot number are required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        else:
+            license_plate = str(license_plate).upper()
 
         try:
             vehicle = get_object_or_404(
@@ -138,18 +140,10 @@ class AllocateParkingSlotView(APIView):
 
         if prebook:
             start_dt = datetime.fromisoformat(start_time)
-            end_dt = datetime.fromisoformat(end_time)
-            if start_dt >= end_dt:
-                return Response(
-                    {"error": "End time must be after start time."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
 
             # Marking slot as prebooked
             slot.is_prebooked = True
-            slot.prebooked_start_time = start_dt
-            slot.prebooked_end_time = end_dt
-            slot.save(update_fields=["is_prebooked", "prebooked_start_time", "prebooked_end_time"])
+            slot.save(update_fields=["is_prebooked"])
 
             record = ParkingRecord.objects.create(
                 vehicle=vehicle,
@@ -164,7 +158,6 @@ class AllocateParkingSlotView(APIView):
                     "level": slot.level.level_number,
                     "slot": slot.slot_number,
                     "start_time": start_dt,
-                    "end_time": end_dt,
                     "record_id": record.id,
                 },
                 status=status.HTTP_201_CREATED,
